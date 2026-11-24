@@ -1085,6 +1085,8 @@ export interface TurnStartEvent {
 /** Fired at the end of each turn */
 export interface TurnEndEvent extends BoundaryState {
 	type: "turn_end";
+	/** Native compaction requested by preceding handlers, if any. */
+	compact?: boolean;
 	turnIndex: number;
 	message: AgentMessage;
 	toolResults: ToolResultMessage[];
@@ -1465,7 +1467,10 @@ export interface ContextEventResult {
 	messages?: AgentMessage[];
 }
 
-export type TurnEndEventResult = BoundaryResult;
+export interface TurnEndEventResult extends BoundaryResult {
+	/** Request native compaction after applying entries, without aborting or requesting another turn. */
+	compact?: boolean;
+}
 export type AgentBeforeSettleEventResult = BoundaryResult;
 
 export type BeforeProviderRequestEventResult = unknown;

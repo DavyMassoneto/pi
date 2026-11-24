@@ -911,6 +911,7 @@ export class AgentSession {
 	private async _dispatchTurnEndBoundary(
 		message: AssistantMessage,
 		toolResults: ToolResultMessage[],
+		signal?: AbortSignal,
 	): Promise<boolean> {
 		this._lastActivityOutcome =
 			message.stopReason === "aborted" ? "aborted" : message.stopReason === "error" ? "error" : "completed";
@@ -941,6 +942,9 @@ export class AgentSession {
 			(entries) => this._buildBoundaryContext(entries, "turn_end"),
 		);
 		this._commitBoundaryDrafts(boundary.entries);
+		if (boundary.compact && !signal?.aborted && this._lastActivityOutcome === "completed") {
+			await this._runAutoCompaction("threshold", false);
+		}
 		if (boundary.continue && !this._buildBoundaryContext([], "turn_end").canContinue) {
 			this._reportInvalidBoundaryContinuation("turn_end");
 			return false;
@@ -952,7 +956,7 @@ export class AgentSession {
 		const previousFinishTurn = this.agent.finishTurn;
 		this.agent.finishTurn = async (turn, signal) => {
 			this._boundaryDispatchedMessages.add(turn.message);
-			const extensionContinue = await this._dispatchTurnEndBoundary(turn.message, turn.toolResults);
+			const extensionContinue = await this._dispatchTurnEndBoundary(turn.message, turn.toolResults, signal);
 			const previousDecision = await previousFinishTurn?.(turn, signal);
 			if (previousDecision?.action === "end") return previousDecision;
 			if (extensionContinue || previousDecision?.action === "continue") return { action: "continue" };

@@ -34,7 +34,6 @@ import type {
 	BeforeProviderHeadersEvent,
 	BeforeProviderRequestEvent,
 	BoundaryContextPreview,
-	BoundaryResult,
 	CacheWarmingDecisionEvent,
 	CacheWarmingDecisionEventResult,
 	CompactOptions,
@@ -88,6 +87,7 @@ import type {
 	ToolResultEvent,
 	ToolResultEventResult,
 	TurnEndEvent,
+	TurnEndEventResult,
 	UIPromptKind,
 	UserBashEvent,
 	UserBashEventResult,
@@ -224,12 +224,13 @@ type RunnerEmitResult<TEvent extends RunnerEmitEvent> = TEvent extends { type: "
 export type ExtensionErrorListener = (error: ExtensionError) => void;
 
 type BoundaryBaseEvent =
-	| Omit<TurnEndEvent, "entries" | "continue" | "context">
+	| Omit<TurnEndEvent, "entries" | "continue" | "compact" | "context">
 	| Omit<AgentBeforeSettleEvent, "entries" | "continue" | "context">;
 
 interface BoundaryDispatchResult {
 	entries: SessionBoundaryDraft[];
 	continue: boolean;
+	compact: boolean;
 	context: BoundaryContextPreview;
 	valid: boolean;
 }
@@ -1052,6 +1053,7 @@ export class ExtensionRunner {
 		const ctx = this.createContext();
 		let entries: SessionBoundaryDraft[] = [];
 		let shouldContinue = false;
+		let shouldCompact = false;
 		let context = await buildContext(entries);
 		let valid = true;
 
@@ -1061,12 +1063,16 @@ export class ExtensionRunner {
 					...baseEvent,
 					entries,
 					continue: shouldContinue,
+					...(baseEvent.type === "turn_end" ? { compact: shouldCompact } : {}),
 					context,
 				} as TurnEndEvent | AgentBeforeSettleEvent;
 				try {
-					const handlerResult = (await handler(event, ctx)) as BoundaryResult | undefined;
+					const handlerResult = (await handler(event, ctx)) as TurnEndEventResult | undefined;
 					if (handlerResult?.entries !== undefined) entries = handlerResult.entries;
 					if (handlerResult?.continue !== undefined) shouldContinue = handlerResult.continue;
+					if (baseEvent.type === "turn_end" && handlerResult?.compact !== undefined) {
+						shouldCompact = handlerResult.compact;
+					}
 				} catch (err) {
 					this.emitError({
 						extensionPath: ext.path,
@@ -1092,8 +1098,8 @@ export class ExtensionRunner {
 		}
 
 		return valid
-			? { entries, continue: shouldContinue, context, valid: true }
-			: { entries: [], continue: false, context, valid: false };
+			? { entries, continue: shouldContinue, compact: shouldCompact, context, valid: true }
+			: { entries: [], continue: false, compact: false, context, valid: false };
 	}
 
 	private isSessionBeforeEvent(event: RunnerEmitEvent): event is SessionBeforeEvent {
